@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+// Importaciones de tus pantallas y configuración de Firebase
 import 'package:login_bear_animation/screens/login_screen.dart';
-import 'firebase_options.dart'; // Generado automáticamente por flutterfire configure
+import 'package:login_bear_animation/screens/home_screen.dart';
+import 'firebase_options.dart';
 
 void main() async {
   // 1. Asegurar que los widgets estén listos antes de inicializar Firebase
@@ -31,21 +34,14 @@ class MyApp extends StatelessWidget {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          // Si hay datos, la sesión está activa
+          // Si el snapshot tiene datos, significa que hay un usuario logueado
           if (snapshot.hasData) {
-            // Placeholder temporal para la Fase 4 (Pantalla principal)
-            return Scaffold(
-              appBar: AppBar(title: const Text('Home')),
-              body: const Center(
-                child: Text('¡Bienvenido! Sesión iniciada con éxito.'),
-              ),
-            );
+            return const HomeScreen(); 
           }
-          // Si no hay sesión, mostramos tu pantalla de Login con Rive
+          // Si no hay datos (snapshot vacío), mostramos la pantalla de Login con Rive
           return const LoginScreen();
         },
       ),
     );
   }
 }
-

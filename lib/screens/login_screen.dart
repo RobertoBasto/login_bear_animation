@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
-import 'dart:async'; // 3.1 Importar el timer
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart'; // Importación de Firebase
+import 'package:login_bear_animation/screens/signup_screen.dart'; // Asegúrate de que esta ruta sea correcta
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,6 +13,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
+  bool _isLoading = false; // Estado para bloquear el botón mientras carga
 
   // 1.1 Crear el cerebro de la animación del oso
   StateMachineController? _controller;
@@ -52,59 +55,113 @@ class _LoginScreenState extends State<LoginScreen> {
     return re.hasMatch(pass);
   }
 
-  // 4.4 Dar acción al botón de Login
-  void _onLogin() {
+  // =====================================================================
+  // FASE 2: LÓGICA DE INICIO DE SESIÓN CON FIREBASE
+  // =====================================================================
+  Future<void> _onLogin() async {
+    if (_isLoading) return;
+
     final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
 
-    // 4.6 Evaluar los errores
-    final eError = isValidEmail(email) ? null : "Invalid email";
-    final pError = isValidPassword(pass) ? null : "Invalid password";
+    // Evaluar errores locales
+    final eError = isValidEmail(email) ? null : "Invalid email format";
+    final pError = isValidPassword(pass) ? null : "Invalid password format";
 
-    // 4.7 Avisar que hubo cambios
     setState(() {
       emailError = eError;
       passError = pError;
     });
 
-    // 4.8 Cerrar el teclado y bajar las manos
+    // Cerrar el teclado y bajar las manos
     FocusScope.of(context).unfocus();
     _typingDebounce?.cancel();
     _isChecking?.change(false);
     _isHandsUp?.change(false);
     _numLook?.value = 50.0;
 
-    // 4.9 Activar triggers
-    if (eError == null && pError == null) {
-      _trigSuccess?.fire();
-    } else {
+    // Si hay error de validación, activar trigger de fallo y detener
+    if (eError != null || pError != null) {
       _trigFail?.fire();
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Intentar iniciar sesión en Firebase
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: pass,
+      );
+      
+      // ÉXITO: El osito celebra
+      _trigSuccess?.fire();
+      
+      // Esperamos un momento para que se vea la animación.
+      // El StreamBuilder en main.dart hará el cambio de pantalla automáticamente.
+      await Future.delayed(const Duration(seconds: 2));
+
+    } on FirebaseAuthException catch (e) {
+      // FALLO: El osito se entristece
+      _trigFail?.fire();
+      
+      setState(() {
+        if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+          emailError = 'No user found for that email.';
+        } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          passError = 'Wrong credentials provided.';
+        } else {
+          passError = 'Error: ${e.message}';
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // =====================================================================
+  // FASE 4: LÓGICA DE RECUPERACIÓN DE CONTRASEÑA
+  // =====================================================================
+  Future<void> _onForgotPassword() async {
+    final email = _emailCtrl.text.trim();
+    
+    if (email.isEmpty || !isValidEmail(email)) {
+      setState(() => emailError = "Enter a valid email first to reset password");
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Password reset link sent to $email')),
+      );
+    } on FirebaseAuthException catch (e) {
+      setState(() => emailError = e.message);
     }
   }
 
   // =====================================================================
   // MÉTODO ANTI-SPAM: Bloquea la UI durante la animación del "Remember Me"
- 
   void _handleRememberMeChange(bool? value) async {
-    // Si ya está corriendo un cambio, ignoramos cualquier clic repetido (Anti-spam)
     if (_isRememberToggling) return; 
 
     setState(() {
-      _isRememberToggling = true; // 1. Activamos la bandera para bloquear la UI
+      _isRememberToggling = true; 
     });
 
-    // Simulamos / esperamos el tiempo que dura la transición o animación (ej. 400ms)
     await Future.delayed(const Duration(milliseconds: 400));
 
     if (!mounted) return;
 
     setState(() {
       _rememberMe = value ?? false;
-      _isRememberToggling = false; // 2. Desactivamos la bandera y actualizamos el estado
+      _isRememberToggling = false; 
     });
   }
- // =====================================================================
-  // 2.2 Listeners (oyentes/chismosos)
+  // =====================================================================
+
   @override
   void initState() {
     super.initState();
@@ -214,14 +271,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // ===================================================================
-                // OPCIÓN "REMEMBER ME" CON ABSABSORBPOINTER Y PROTECCIÓN ANTI-SPAM
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        // AbsorbPointer intercepta y bloquea los toques si _isRememberToggling es true
                         AbsorbPointer(
                           absorbing: _isRememberToggling,
                           child: Checkbox(
@@ -232,14 +286,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text('Remember me'),
                       ],
                     ),
-                    const Text(
-                      'Forgot password?',
-                      style: TextStyle(decoration: TextDecoration.underline),
+                    // BOTÓN DE RECUPERAR CONTRASEÑA (FASE 4)
+                    GestureDetector(
+                      onTap: _onForgotPassword,
+                      child: const Text(
+                        'Forgot password?',
+                        style: TextStyle(
+                          decoration: TextDecoration.underline,
+                          color: Colors.blue,
+                        ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 10),
-               // ===================================================================
+
                 // Botón de Login
                 MaterialButton(
                   minWidth: size.width,
@@ -248,12 +309,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  onPressed: _onLogin,
-                  child: const Text('Login', style: TextStyle(color: Colors.white)),
+                  onPressed: _isLoading ? null : _onLogin, // Bloqueo mientras carga
+                  child: _isLoading 
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Login', style: TextStyle(color: Colors.white)),
                 ),
                 const SizedBox(height: 10),
 
-                // Texto de Registro
+                // Texto de Registro y Navegación (FASE 3)
                 SizedBox(
                   width: size.width,
                   child: Row(
@@ -261,7 +324,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       const Text("Don't have an account?"),
                       TextButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SignUpScreen(),
+                            ),
+                          );
+                        },
                         child: const Text(
                           'Sign up',
                           style: TextStyle(
