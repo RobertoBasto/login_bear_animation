@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:rive/rive.dart';
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart'; // Importación de Firebase
-import 'package:login_bear_animation/screens/signup_screen.dart'; // Asegúrate de que esta ruta sea correcta
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// Asegúrate de que las rutas coincidan con tu proyecto
+import 'package:login_bear_animation/screens/signup_screen.dart'; 
+import 'package:login_bear_animation/screens/home_screen.dart'; 
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,38 +17,28 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
-  bool _isLoading = false; // Estado para bloquear el botón mientras carga
+  bool _isLoading = false;
 
-  // 1.1 Crear el cerebro de la animación del oso
   StateMachineController? _controller;
   SMIBool? _isChecking;
   SMIBool? _isHandsUp;
   SMITrigger? _trigSuccess;
   SMITrigger? _trigFail;
-
-  // 3.2 Variable del recorrido de la mirada
   SMINumber? _numLook;
-
-  // 3.3 Timer para detener la mirada al dejar de escribir
   Timer? _typingDebounce;
 
-  // Variables para el estado del "Remember Me" y el anti-spam
   bool _rememberMe = false;
-  bool _isRememberToggling = false; // Bandera anti-spam solicitada en el reto
+  bool _isRememberToggling = false; 
 
-  // 2.1 Crear las variables para FocusNode
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
 
-  // 4.1 Controllers que manipulan lo que el usuario escribe
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
 
-  // Errores para mostrarlo en la UI
   String? emailError;
   String? passError;
 
-  // 4.3 Validadores
   bool isValidEmail(String email) {
     final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
     return re.hasMatch(email);
@@ -55,16 +49,43 @@ class _LoginScreenState extends State<LoginScreen> {
     return re.hasMatch(pass);
   }
 
-  // =====================================================================
-  // FASE 2: LÓGICA DE INICIO DE SESIÓN CON FIREBASE
-  // =====================================================================
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberMe(); // <-- Cargar correo guardado al iniciar
+    
+    _emailFocus.addListener(() {
+      if (_emailFocus.hasFocus) {
+        if (_isHandsUp != null) {
+          _isHandsUp?.change(false);
+          _numLook?.value = 50.0;
+        }
+      }
+    });
+    _passwordFocus.addListener(() {
+      _isHandsUp?.change(_passwordFocus.hasFocus);
+    });
+  }
+
+  // MÉTODO PARA CARGAR EL CORREO GUARDADO
+  Future<void> _loadRememberMe() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('saved_email');
+    if (savedEmail != null && savedEmail.isNotEmpty) {
+      setState(() {
+        _emailCtrl.text = savedEmail;
+        _rememberMe = true;
+      });
+    }
+  }
+
+  // LÓGICA DE INICIO DE SESIÓN
   Future<void> _onLogin() async {
     if (_isLoading) return;
 
     final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
 
-    // Evaluar errores locales
     final eError = isValidEmail(email) ? null : "Invalid email format";
     final pError = isValidPassword(pass) ? null : "Invalid password format";
 
@@ -73,14 +94,12 @@ class _LoginScreenState extends State<LoginScreen> {
       passError = pError;
     });
 
-    // Cerrar el teclado y bajar las manos
     FocusScope.of(context).unfocus();
     _typingDebounce?.cancel();
     _isChecking?.change(false);
     _isHandsUp?.change(false);
     _numLook?.value = 50.0;
 
-    // Si hay error de validación, activar trigger de fallo y detener
     if (eError != null || pError != null) {
       _trigFail?.fire();
       return;
@@ -89,23 +108,35 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Intentar iniciar sesión en Firebase
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: pass,
       );
       
+      // LOGICA REMEMBER ME: Guardar o borrar el correo
+      final prefs = await SharedPreferences.getInstance();
+      if (_rememberMe) {
+        await prefs.setString('saved_email', email);
+      } else {
+        await prefs.remove('saved_email');
+      }
+      
       // ÉXITO: El osito celebra
       _trigSuccess?.fire();
       
-      // Esperamos un momento para que se vea la animación.
-      // El StreamBuilder en main.dart hará el cambio de pantalla automáticamente.
+      // Esperamos 2 segundos completos viendo al osito celebrar
       await Future.delayed(const Duration(seconds: 2));
 
+      // Navegación manual al Home
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+
     } on FirebaseAuthException catch (e) {
-      // FALLO: El osito se entristece
       _trigFail?.fire();
-      
       setState(() {
         if (e.code == 'user-not-found' || e.code == 'invalid-email') {
           emailError = 'No user found for that email.';
@@ -120,9 +151,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // =====================================================================
-  // FASE 4: LÓGICA DE RECUPERACIÓN DE CONTRASEÑA
-  // =====================================================================
   Future<void> _onForgotPassword() async {
     final email = _emailCtrl.text.trim();
     
@@ -142,8 +170,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // =====================================================================
-  // MÉTODO ANTI-SPAM: Bloquea la UI durante la animación del "Remember Me"
   void _handleRememberMeChange(bool? value) async {
     if (_isRememberToggling) return; 
 
@@ -160,23 +186,6 @@ class _LoginScreenState extends State<LoginScreen> {
       _isRememberToggling = false; 
     });
   }
-  // =====================================================================
-
-  @override
-  void initState() {
-    super.initState();
-    _emailFocus.addListener(() {
-      if (_emailFocus.hasFocus) {
-        if (_isHandsUp != null) {
-          _isHandsUp?.change(false);
-          _numLook?.value = 50.0;
-        }
-      }
-    });
-    _passwordFocus.addListener(() {
-      _isHandsUp?.change(_passwordFocus.hasFocus);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +197,6 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               children: [
-                // Animación del Oso
                 SizedBox(
                   width: size.width,
                   height: 200,
@@ -211,8 +219,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // Campo de Email
                 TextField(
                   controller: _emailCtrl,
                   focusNode: _emailFocus,
@@ -239,8 +245,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
-                // Campo de Password
                 TextField(
                   controller: _passCtrl,
                   focusNode: _passwordFocus,
@@ -270,7 +274,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -286,7 +289,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         const Text('Remember me'),
                       ],
                     ),
-                    // BOTÓN DE RECUPERAR CONTRASEÑA (FASE 4)
                     GestureDetector(
                       onTap: _onForgotPassword,
                       child: const Text(
@@ -300,8 +302,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-
-                // Botón de Login
                 MaterialButton(
                   minWidth: size.width,
                   height: 50,
@@ -309,14 +309,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  onPressed: _isLoading ? null : _onLogin, // Bloqueo mientras carga
+                  onPressed: _isLoading ? null : _onLogin,
                   child: _isLoading 
                       ? const CircularProgressIndicator(color: Colors.white)
                       : const Text('Login', style: TextStyle(color: Colors.white)),
                 ),
                 const SizedBox(height: 10),
-
-                // Texto de Registro y Navegación (FASE 3)
                 SizedBox(
                   width: size.width,
                   child: Row(

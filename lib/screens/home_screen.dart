@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:login_bear_animation/screens/login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos el usuario actual para mostrar su correo
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Home'),
         actions: [
-          // Botón de Cierre de Sesión (Fase 4)
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              // Limpia el estado local y cierra sesión en Firebase
+              // Limpia el estado de Firebase
               await FirebaseAuth.instance.signOut();
-              // NOTA: No necesitamos Navigator aquí porque el 
-              // StreamBuilder en main.dart detectará el cambio automáticamente
+              
+              // Regresa al usuario a la pantalla de Login forzosamente
+              if (context.mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
             },
           )
         ],

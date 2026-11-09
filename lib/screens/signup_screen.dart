@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:login_bear_animation/screens/home_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -19,7 +19,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _errorMessage;
 
   Future<void> _onSignUp() async {
-    // Valida que el formulario cumpla con las reglas (email y password)
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -28,31 +27,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      // 1. Crear el usuario en Firebase Auth
-      UserCredential userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
+      // 1. Crear el usuario exclusivamente en Firebase Auth
+      await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
 
-      // 2. Opcional (Fase 3): Guardar datos básicos en Firestore
-      if (userCredential.user != null) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(userCredential.user!.uid)
-            .set({
-          'email': _emailCtrl.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      // 2. Navegación directa forzada al Home
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (Route<dynamic> route) => false, 
+        );
       }
-
-      // 3. Regresar. El StreamBuilder de main.dart detectará la sesión 
-      // y enviará al usuario a la pantalla principal automáticamente.
-      if (mounted) Navigator.pop(context);
 
     } on FirebaseAuthException catch (e) {
       setState(() {
-        _errorMessage = e.message ?? "An error occurred during sign up.";
+        _errorMessage = e.message ?? "Error de Firebase: verifique sus credenciales.";
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error inesperado: $e";
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -82,7 +78,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
                   const SizedBox(height: 10),
                 ],
-                // Campo de Correo
+                
                 TextFormField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
@@ -99,7 +95,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   },
                 ),
                 const SizedBox(height: 15),
-                // Campo de Contraseña
+                
                 TextFormField(
                   controller: _passCtrl,
                   obscureText: _obscure,
@@ -114,12 +110,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return "Password is required";
-                    if (value.length < 6) return "Password must be at least 6 characters";
+                    
+                    final re = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$');
+                    if (!re.hasMatch(value)) {
+                      return "Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special";
+                    }
                     return null;
                   },
                 ),
                 const SizedBox(height: 25),
-                // Botón de Registro
+                
                 MaterialButton(
                   minWidth: size.width,
                   height: 50,
