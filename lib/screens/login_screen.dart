@@ -4,9 +4,8 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Asegúrate de que las rutas coincidan con tu proyecto
-import 'package:login_bear_animation/screens/signup_screen.dart'; 
-import 'package:login_bear_animation/screens/home_screen.dart'; 
+import 'package:login_bear_animation/screens/signup_screen.dart';
+import 'package:login_bear_animation/screens/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,7 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Timer? _typingDebounce;
 
   bool _rememberMe = false;
-  bool _isRememberToggling = false; 
+  bool _isRememberToggling = false;
 
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
@@ -39,12 +38,16 @@ class _LoginScreenState extends State<LoginScreen> {
   String? emailError;
   String? passError;
 
+  // Valida exclusivamente correos institucionales @merida.tecnm.mx
   bool isValidEmail(String email) {
-    final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    final re = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@merida\.tecnm\.mx$',
+      caseSensitive: false,
+    );
     return re.hasMatch(email);
   }
 
-  bool isValidPassword(String pass) { 
+  bool isValidPassword(String pass) {
     final re = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$');
     return re.hasMatch(pass);
   }
@@ -52,8 +55,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRememberMe(); // <-- Cargar correo guardado al iniciar
-    
+    _loadRememberMe();
+
     _emailFocus.addListener(() {
       if (_emailFocus.hasFocus) {
         if (_isHandsUp != null) {
@@ -67,26 +70,30 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  // MÉTODO PARA CARGAR EL CORREO GUARDADO
   Future<void> _loadRememberMe() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('saved_email');
-    if (savedEmail != null && savedEmail.isNotEmpty) {
-      setState(() {
-        _emailCtrl.text = savedEmail;
-        _rememberMe = true;
-      });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('saved_email');
+      if (savedEmail != null && savedEmail.isNotEmpty && mounted) {
+        setState(() {
+          _emailCtrl.text = savedEmail;
+          _rememberMe = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando preferencias: $e');
     }
   }
 
-  // LÓGICA DE INICIO DE SESIÓN
   Future<void> _onLogin() async {
     if (_isLoading) return;
 
     final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
 
-    final eError = isValidEmail(email) ? null : "Invalid email format";
+    final eError = isValidEmail(email)
+        ? null
+        : "Use an institutional email (@merida.tecnm.mx)";
     final pError = isValidPassword(pass) ? null : "Invalid password format";
 
     setState(() {
@@ -112,40 +119,61 @@ class _LoginScreenState extends State<LoginScreen> {
         email: email,
         password: pass,
       );
-      
-      // LOGICA REMEMBER ME: Guardar o borrar el correo
-      final prefs = await SharedPreferences.getInstance();
-      if (_rememberMe) {
-        await prefs.setString('saved_email', email);
-      } else {
-        await prefs.remove('saved_email');
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (_rememberMe) {
+          await prefs.setString('saved_email', email);
+        } else {
+          await prefs.remove('saved_email');
+        }
+      } catch (e) {
+        debugPrint('Error guardando Remember Me: $e');
       }
-      
-      // ÉXITO: El osito celebra
+
       _trigSuccess?.fire();
-      
-      // Esperamos 2 segundos completos viendo al osito celebrar
       await Future.delayed(const Duration(seconds: 2));
 
-      // Navegación manual al Home
       if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
       }
-
     } on FirebaseAuthException catch (e) {
       _trigFail?.fire();
       setState(() {
-        if (e.code == 'user-not-found' || e.code == 'invalid-email') {
-          emailError = 'No user found for that email.';
-        } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
-          passError = 'Wrong credentials provided.';
-        } else {
-          passError = 'Error: ${e.message}';
-        }
+        emailError = null;
+        passError = null;
       });
+
+      final isBadCredentials = e.code == 'invalid-credential' ||
+          e.code == 'wrong-password' ||
+          e.code == 'user-not-found' ||
+          e.code == 'invalid-email';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isBadCredentials
+                  ? 'Credenciales no válidas. Verifica tu correo y contraseña.'
+                  : 'Error de Firebase (${e.code}): ${e.message}',
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      _trigFail?.fire();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error inesperado: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -153,9 +181,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _onForgotPassword() async {
     final email = _emailCtrl.text.trim();
-    
+
     if (email.isEmpty || !isValidEmail(email)) {
-      setState(() => emailError = "Enter a valid email first to reset password");
+      setState(
+        () => emailError = "Enter a valid @merida.tecnm.mx email first",
+      );
       return;
     }
 
@@ -171,10 +201,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleRememberMeChange(bool? value) async {
-    if (_isRememberToggling) return; 
+    if (_isRememberToggling) return;
 
     setState(() {
-      _isRememberToggling = true; 
+      _isRememberToggling = true;
     });
 
     await Future.delayed(const Duration(milliseconds: 400));
@@ -183,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       _rememberMe = value ?? false;
-      _isRememberToggling = false; 
+      _isRememberToggling = false;
     });
   }
 
@@ -222,6 +252,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _emailCtrl,
                   focusNode: _emailFocus,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   onChanged: (value) {
                     if (_isChecking == null) return;
                     _isChecking!.change(true);
@@ -237,7 +269,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
                     errorText: emailError,
-                    hintText: 'Email',
+                    hintText: '@merida.tecnm.mx',
                     prefixIcon: const Icon(Icons.email),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -248,6 +280,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextField(
                   controller: _passCtrl,
                   focusNode: _passwordFocus,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   onChanged: (value) {
                     if (_isHandsUp == null) return;
                     _isHandsUp!.change(true);
@@ -310,9 +344,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   onPressed: _isLoading ? null : _onLogin,
-                  child: _isLoading 
+                  child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Login', style: TextStyle(color: Colors.white)),
+                      : const Text(
+                          'Login',
+                          style: TextStyle(color: Colors.white),
+                        ),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(

@@ -13,7 +13,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  
+
   bool _obscure = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -27,24 +27,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      // 1. Crear el usuario exclusivamente en Firebase Auth
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
 
-      // 2. Navegación directa forzada al Home
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (Route<dynamic> route) => false, 
+          (Route<dynamic> route) => false,
         );
       }
-
     } on FirebaseAuthException catch (e) {
       setState(() {
-        _errorMessage = e.message ?? "Error de Firebase: verifique sus credenciales.";
+        _errorMessage =
+            e.message ?? "Error de Firebase: verifique sus credenciales.";
       });
     } catch (e) {
       setState(() {
@@ -58,7 +56,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create Account'),
@@ -78,40 +76,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
                   const SizedBox(height: 10),
                 ],
-                
                 TextFormField(
                   controller: _emailCtrl,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    hintText: 'Email',
+                    hintText: '@merida.tecnm.mx',
                     prefixIcon: const Icon(Icons.email),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return "Email is required";
-                    final re = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
-                    if (!re.hasMatch(value)) return "Enter a valid email format";
+                    if (value == null || value.isEmpty) {
+                      return "Email is required";
+                    }
+                    final re = RegExp(
+                      r'^[a-zA-Z0-9._%+-]+@merida\.tecnm\.mx$',
+                      caseSensitive: false,
+                    );
+                    if (!re.hasMatch(value.trim())) {
+                      return "Use a valid @merida.tecnm.mx email";
+                    }
                     return null;
                   },
                 ),
                 const SizedBox(height: 15),
-                
                 TextFormField(
                   controller: _passCtrl,
+                  autocorrect: false,
+                  enableSuggestions: false,
                   obscureText: _obscure,
+                  keyboardType: TextInputType.visiblePassword,
                   decoration: InputDecoration(
                     hintText: 'Password',
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                      icon: Icon(
+                        _obscure ? Icons.visibility : Icons.visibility_off,
+                      ),
                       onPressed: () => setState(() => _obscure = !_obscure),
                     ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   validator: (value) {
-                    if (value == null || value.isEmpty) return "Password is required";
-                    
-                    final re = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$');
+                    if (value == null || value.isEmpty) {
+                      return "Password is required";
+                    }
+                    final re = RegExp(
+                      r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$',
+                    );
                     if (!re.hasMatch(value)) {
                       return "Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special";
                     }
@@ -119,16 +136,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   },
                 ),
                 const SizedBox(height: 25),
-                
                 MaterialButton(
                   minWidth: size.width,
                   height: 50,
                   color: Colors.deepPurple,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   onPressed: _isLoading ? null : _onSignUp,
-                  child: _isLoading 
+                  child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Sign Up', style: TextStyle(color: Colors.white)),
+                      : const Text(
+                          'Sign Up',
+                          style: TextStyle(color: Colors.white),
+                        ),
                 ),
               ],
             ),
